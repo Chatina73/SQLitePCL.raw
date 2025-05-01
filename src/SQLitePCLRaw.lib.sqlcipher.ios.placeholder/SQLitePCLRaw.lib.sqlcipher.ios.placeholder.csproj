@@ -1,10 +1,11 @@
-<Project Sdk="MSBuild.Sdk.Extras">
+<Project Sdk="Xamarin.Legacy.Sdk">
 	<PropertyGroup>
-		<TargetFrameworks>xamarin.ios10</TargetFrameworks>
+		<TargetFrameworks>$(tfm_net6_ios);$(tfm_classic_ios)</TargetFrameworks>
 		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
 		<SignAssembly>true</SignAssembly>
 		<AssemblyName>SQLitePCLRaw.lib.sqlcipher</AssemblyName>
 		<AssemblyOriginatorKeyFile>..\..\sn\SQLitePCLRaw.lib.sqlcipher.snk</AssemblyOriginatorKeyFile>
+		<IsPackable>false</IsPackable>
 	</PropertyGroup>
 
 <ItemGroup>

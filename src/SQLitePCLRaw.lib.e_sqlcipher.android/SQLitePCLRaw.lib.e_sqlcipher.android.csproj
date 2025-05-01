@@ -1,6 +1,6 @@
-<Project Sdk="MSBuild.Sdk.Extras">
+<Project Sdk="Xamarin.Legacy.Sdk">
 	<PropertyGroup>
-		<TargetFrameworks>MonoAndroid80</TargetFrameworks>
+		<TargetFrameworks>$(tfm_net6_android);$(tfm_classic_android)</TargetFrameworks>
 		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
 		<SignAssembly>true</SignAssembly>
 		<AssemblyOriginatorKeyFile>..\..\sn\SQLitePCLRaw.lib.e_sqlcipher.snk</AssemblyOriginatorKeyFile>
@@ -23,10 +23,6 @@
     <EmbeddedNativeLibrary Include="$([System.IO.Path]::Combine($(cb_bin_path), 'e_sqlcipher', 'android', 'x86_64', 'libe_sqlcipher.so'))">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       <Link>x86_64\libe_sqlcipher.so</Link>
-    </EmbeddedNativeLibrary>
-    <EmbeddedNativeLibrary Include="$([System.IO.Path]::Combine($(cb_bin_path), 'e_sqlcipher', 'android', 'armeabi', 'libe_sqlcipher.so'))">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-      <Link>armeabi\libe_sqlcipher.so</Link>
     </EmbeddedNativeLibrary>
     <EmbeddedNativeLibrary Include="$([System.IO.Path]::Combine($(cb_bin_path), 'e_sqlcipher', 'android', 'arm64-v8a', 'libe_sqlcipher.so'))">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>

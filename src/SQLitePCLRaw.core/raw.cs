@@ -91,6 +91,19 @@ namespace SQLitePCL
 
         public const int SQLITE_DETERMINISTIC = 0x800;
 
+        public const int SQLITE_LIMIT_LENGTH = 0;
+        public const int SQLITE_LIMIT_SQL_LENGTH = 1;
+        public const int SQLITE_LIMIT_COLUMN = 2;
+        public const int SQLITE_LIMIT_EXPR_DEPTH = 3;
+        public const int SQLITE_LIMIT_COMPOUND_SELECT = 4;
+        public const int SQLITE_LIMIT_VDBE_OP = 5;
+        public const int SQLITE_LIMIT_FUNCTION_ARG = 6;
+        public const int SQLITE_LIMIT_ATTACHED = 7;
+        public const int SQLITE_LIMIT_LIKE_PATTERN_LENGTH = 8;
+        public const int SQLITE_LIMIT_VARIABLE_NUMBER = 9;
+        public const int SQLITE_LIMIT_TRIGGER_DEPTH = 10;
+        public const int SQLITE_LIMIT_WORKER_THREADS = 11;
+
         public const int SQLITE_CONFIG_SINGLETHREAD = 1;  /* nil */
         public const int SQLITE_CONFIG_MULTITHREAD = 2;  /* nil */
         public const int SQLITE_CONFIG_SERIALIZED = 3;  /* nil */
@@ -112,6 +125,26 @@ namespace SQLitePCL
         public const int SQLITE_CONFIG_GETPCACHE2 = 19;  /* sqlite3_pcache_methods2* */
         public const int SQLITE_CONFIG_COVERING_INDEX_SCAN = 20;  /* int */
         public const int SQLITE_CONFIG_SQLLOG = 21;  /* xSqllog, void* */
+
+        public const int SQLITE_DBCONFIG_MAINDBNAME = 1000; /* const char* */
+        public const int SQLITE_DBCONFIG_LOOKASIDE = 1001; /* void* int int */
+        public const int SQLITE_DBCONFIG_ENABLE_FKEY = 1002; /* int int* */
+        public const int SQLITE_DBCONFIG_ENABLE_TRIGGER = 1003; /* int int* */
+        public const int SQLITE_DBCONFIG_ENABLE_FTS3_TOKENIZER = 1004; /* int int* */
+        public const int SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION = 1005; /* int int* */
+        public const int SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE = 1006; /* int int* */
+        public const int SQLITE_DBCONFIG_ENABLE_QPSG = 1007; /* int int* */
+        public const int SQLITE_DBCONFIG_TRIGGER_EQP = 1008; /* int int* */
+        public const int SQLITE_DBCONFIG_RESET_DATABASE = 1009; /* int int* */
+        public const int SQLITE_DBCONFIG_DEFENSIVE = 1010; /* int int* */
+        public const int SQLITE_DBCONFIG_WRITABLE_SCHEMA = 1011; /* int int* */
+        public const int SQLITE_DBCONFIG_LEGACY_ALTER_TABLE = 1012; /* int int* */
+        public const int SQLITE_DBCONFIG_DQS_DML = 1013; /* int int* */
+        public const int SQLITE_DBCONFIG_DQS_DDL = 1014; /* int int* */
+        public const int SQLITE_DBCONFIG_ENABLE_VIEW = 1015; /* int int* */
+        public const int SQLITE_DBCONFIG_LEGACY_FILE_FORMAT = 1016; /* int int* */
+        public const int SQLITE_DBCONFIG_TRUSTED_SCHEMA = 1017; /* int int* */
+        public const int SQLITE_DBCONFIG_MAX = 1017; /* Largest DBCONFIG */
 
         public const int SQLITE_OPEN_READONLY = 0x00000001;  /* Ok for sqlite3_open_v2() */
         public const int SQLITE_OPEN_READWRITE = 0x00000002;  /* Ok for sqlite3_open_v2() */
@@ -305,6 +338,11 @@ namespace SQLitePCL
         public const int SQLITE_TRACE_PROFILE = 0x02;
         public const int SQLITE_TRACE_ROW = 0x04;
         public const int SQLITE_TRACE_CLOSE = 0x08;
+
+        public const int SQLITE_SERIALIZE_NOCOPY = 1; /* SQLite will not allocate memory. */
+        public const int SQLITE_DESERIALIZE_FREEONCLOSE = 1; /* SQLite will call sqlite3_free() on close. */
+        public const int SQLITE_DESERIALIZE_RESIZEABLE = 2; /* SQLite will resize using sqlite3_realloc64(). */
+        public const int SQLITE_DESERIALIZE_READONLY = 4; /* Database is read-only. */
 
         static public int sqlite3_open(utf8z filename, out sqlite3 db)
         {
@@ -613,6 +651,11 @@ namespace SQLitePCL
             return Provider.sqlite3_shutdown();
         }
 
+        static public int sqlite3_limit(sqlite3 db, int id, int newVal)
+        {
+            return Provider.sqlite3_limit(db, id, newVal);
+        }
+
         static public int sqlite3_config(int op)
         {
             return Provider.sqlite3_config(op);
@@ -623,9 +666,29 @@ namespace SQLitePCL
             return Provider.sqlite3_config(op, val);
         }
 
+        static public int sqlite3_db_config(sqlite3 db, int op, utf8z val) 
+        {
+            return Provider.sqlite3_db_config(db, op, val);
+        }
+
+        static public int sqlite3_db_config(sqlite3 db, int op, int val, out int result) 
+        {
+            return Provider.sqlite3_db_config(db, op, val, out result);
+        }
+        
+        static public int sqlite3_db_config(sqlite3 db, int op, IntPtr ptr, int int0, int int1) 
+        {
+            return Provider.sqlite3_db_config(db, op, ptr, int0, int1);
+        }
+
         static public int sqlite3_enable_load_extension(sqlite3 db, int onoff)
         {
             return Provider.sqlite3_enable_load_extension(db, onoff);
+        }
+
+        static public int sqlite3_load_extension(sqlite3 db, utf8z file, utf8z proc, out utf8z errmsg)
+        {
+            return Provider.sqlite3_load_extension(db, file, proc, out errmsg);
         }
 
         static public utf8z sqlite3_sourceid()
@@ -641,6 +704,16 @@ namespace SQLitePCL
         static public long sqlite3_memory_highwater(int resetFlag)
         {
             return Provider.sqlite3_memory_highwater(resetFlag);
+        }
+
+        static public long sqlite3_soft_heap_limit64(long n)
+        {
+            return Provider.sqlite3_soft_heap_limit64(n);
+        }
+
+        static public long sqlite3_hard_heap_limit64(long n)
+        {
+            return Provider.sqlite3_hard_heap_limit64(n);
         }
 
         static public int sqlite3_status(int op, out int current, out int highwater, int resetFlag)
@@ -732,11 +805,14 @@ namespace SQLitePCL
 
         static public int sqlite3_prepare_v2(sqlite3 db, string sql, out sqlite3_stmt stmt)
         {
-            return sqlite3_prepare_v2(db, sql.to_utf8z(), out stmt);
+            var ba = sql.to_utf8_with_z();
+            var sp = new ReadOnlySpan<byte>(ba);
+            int rc = sqlite3_prepare_v2(db, sp, out stmt, out var sp_tail);
+            return rc;
         }
-
         static public int sqlite3_prepare_v2(sqlite3 db, ReadOnlySpan<byte> sql, out sqlite3_stmt stmt, out ReadOnlySpan<byte> tail)
         {
+            // #430 happens here
             int rc = Provider.sqlite3_prepare_v2(db, sql, out var p, out tail);
             stmt = sqlite3_stmt.From(p, db);
             return rc;
@@ -774,9 +850,11 @@ namespace SQLitePCL
 
         static public int sqlite3_prepare_v3(sqlite3 db, string sql, uint flags, out sqlite3_stmt stmt)
         {
-            return sqlite3_prepare_v3(db, sql.to_utf8z(), flags, out stmt);
+            var ba = sql.to_utf8_with_z();
+            var sp = new ReadOnlySpan<byte>(ba);
+            int rc = sqlite3_prepare_v3(db, sp, flags, out stmt, out var sp_tail);
+            return rc;
         }
-
         static public int sqlite3_prepare_v3(sqlite3 db, ReadOnlySpan<byte> sql, uint flags, out sqlite3_stmt stmt, out ReadOnlySpan<byte> tail)
         {
             int rc = Provider.sqlite3_prepare_v3(db, sql, flags, out var p, out tail);
@@ -793,8 +871,10 @@ namespace SQLitePCL
 
         static public int sqlite3_prepare_v3(sqlite3 db, string sql, uint flags, out sqlite3_stmt stmt, out string tail)
         {
-            int rc = sqlite3_prepare_v3(db, sql.to_utf8z(), flags, out stmt, out var sp_tail);
-            tail = sp_tail.utf8_to_string();
+            var ba = sql.to_utf8_with_z();
+            var sp = new ReadOnlySpan<byte>(ba);
+            int rc = sqlite3_prepare_v3(db, sp, flags, out stmt, out var sp_tail);
+            tail = utf8_span_to_string(sp_tail.Slice(0, sp_tail.Length - 1));
             return rc;
         }
 
@@ -1327,9 +1407,7 @@ namespace SQLitePCL
 
         static public int sqlite3_blob_open(sqlite3 db, utf8z db_utf8, utf8z table_utf8, utf8z col_utf8, long rowid, int flags, out sqlite3_blob blob)
         {
-            var rc = Provider.sqlite3_blob_open(db, db_utf8, table_utf8, col_utf8, rowid, flags, out var p);
-            blob = sqlite3_blob.From(p);
-            return rc;
+            return Provider.sqlite3_blob_open(db, db_utf8, table_utf8, col_utf8, rowid, flags, out blob);
         }
 
         static public int sqlite3_blob_open(sqlite3 db, string sdb, string table, string col, long rowid, int flags, out sqlite3_blob blob)
@@ -1421,5 +1499,30 @@ namespace SQLitePCL
 		{
 			return Provider.sqlite3_keyword_name(i, out name);
 		}
+
+        static public IntPtr sqlite3_malloc(int n)
+        {
+            return Provider.sqlite3_malloc(n);
+        }
+
+        static public IntPtr sqlite3_malloc64(long n)
+        {
+            return Provider.sqlite3_malloc64(n);
+        }
+
+        static public void sqlite3_free(IntPtr p)
+        {
+            Provider.sqlite3_free(p);
+        }
+
+        static public IntPtr sqlite3_serialize(sqlite3 db, string schema, out long size, int flags)
+        {
+            return Provider.sqlite3_serialize(db, schema.to_utf8z(), out size, flags);
+        }
+
+        static public int sqlite3_deserialize(sqlite3 db, string schema, IntPtr data, long deserializedDataSize, long maxDataSize, int flags)
+        {
+            return Provider.sqlite3_deserialize(db, schema.to_utf8z(), data, deserializedDataSize, maxDataSize, flags);
+        }
     }
 }

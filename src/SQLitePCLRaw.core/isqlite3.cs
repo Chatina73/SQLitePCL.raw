@@ -53,7 +53,7 @@ namespace SQLitePCL
     /// boundary between the portable class library and the platform-specific code
     /// below.
     ///
-    /// In general, it is defined to be as low-level as possible while still remaninig
+    /// In general, it is defined to be as low-level as possible while still remaining
     /// "portable".  For example, a sqlite3 connection handle appears here as an IntPtr.
     /// Same goes for the C-level sqlite3_stmt pointer, also an IntPtr.
     ///
@@ -100,6 +100,8 @@ namespace SQLitePCL
         utf8z sqlite3_sourceid();
         long sqlite3_memory_used();
         long sqlite3_memory_highwater(int resetFlag);
+        long sqlite3_soft_heap_limit64(long n);
+        long sqlite3_hard_heap_limit64(long n);
         int sqlite3_status(int op, out int current, out int highwater, int resetFlag);
 
         int sqlite3_db_readonly(sqlite3 db, utf8z dbName);
@@ -118,8 +120,13 @@ namespace SQLitePCL
 
         int sqlite3_prepare_v2(sqlite3 db, ReadOnlySpan<byte> sql, out IntPtr stmt, out ReadOnlySpan<byte> remain);
         int sqlite3_prepare_v3(sqlite3 db, ReadOnlySpan<byte> sql, uint flags, out IntPtr stmt, out ReadOnlySpan<byte> remain);
+
+        [Obsolete]
         int sqlite3_prepare_v2(sqlite3 db, utf8z sql, out IntPtr stmt, out utf8z remain);
+
+        [Obsolete]
         int sqlite3_prepare_v3(sqlite3 db, utf8z sql, uint flags, out IntPtr stmt, out utf8z remain);
+
         int sqlite3_step(sqlite3_stmt stmt);
         int sqlite3_finalize(IntPtr stmt);
         int sqlite3_reset(sqlite3_stmt stmt);
@@ -169,7 +176,7 @@ namespace SQLitePCL
         int sqlite3_backup_pagecount(sqlite3_backup backup);
         int sqlite3_backup_finish(IntPtr backup);
 
-        int sqlite3_blob_open(sqlite3 db, utf8z db_utf8, utf8z table_utf8, utf8z col_utf8, long rowid, int flags, out IntPtr blob);
+        int sqlite3_blob_open(sqlite3 db, utf8z db_utf8, utf8z table_utf8, utf8z col_utf8, long rowid, int flags, out sqlite3_blob blob);
         int sqlite3_blob_bytes(sqlite3_blob blob);
         int sqlite3_blob_reopen(sqlite3_blob blob, long rowid);
         int sqlite3_blob_write(sqlite3_blob blob, ReadOnlySpan<byte> b, int offset);
@@ -239,6 +246,8 @@ namespace SQLitePCL
         int sqlite3_stricmp(IntPtr p, IntPtr q);
         int sqlite3_strnicmp(IntPtr p, IntPtr q, int n);
 
+        IntPtr sqlite3_malloc(int n);
+        IntPtr sqlite3_malloc64(long n);
         void sqlite3_free(IntPtr p);
 
         int sqlite3_key(sqlite3 db, ReadOnlySpan<byte> key);
@@ -246,16 +255,21 @@ namespace SQLitePCL
         int sqlite3_rekey(sqlite3 db, ReadOnlySpan<byte> key);
         int sqlite3_rekey_v2(sqlite3 db, utf8z dbname, ReadOnlySpan<byte> key);
 
-#if not // TODO consider
-        int sqlite3_load_extension(sqlite3 db, utf8z fileName, utf8z procName, ref IntPtr pError);
-#endif
+        int sqlite3_load_extension(sqlite3 db, utf8z zFile, utf8z zProc, out utf8z pzErrMsg);
 
         int sqlite3_initialize();
         int sqlite3_shutdown();
 
+        int sqlite3_limit(sqlite3 db, int id, int newVal);
+
         // sqlite3_config() takes a variable argument list
         int sqlite3_config(int op);
         int sqlite3_config(int op, int val);
+
+        // sqlite3_db_config() takes a variable argument list
+        int sqlite3_db_config(sqlite3 db, int op, utf8z val);
+        int sqlite3_db_config(sqlite3 db, int op, int val, out int result);
+        int sqlite3_db_config(sqlite3 db, int op, IntPtr ptr, int int0, int int1);
 
         int sqlite3_enable_load_extension(sqlite3 db, int enable);
 
@@ -264,6 +278,9 @@ namespace SQLitePCL
 
 		int sqlite3_keyword_count();
 		int sqlite3_keyword_name(int i, out string name);
+
+        IntPtr sqlite3_serialize(sqlite3 db, utf8z schema, out long size, int flags);
+        int sqlite3_deserialize(sqlite3 db, utf8z schema, IntPtr data, long szDb, long szBuf, int flags);
     }
 }
 

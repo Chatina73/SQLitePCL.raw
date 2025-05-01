@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using SQLitePCL;
 using SQLitePCL.Ugly;
@@ -67,10 +68,30 @@ namespace SQLitePCL.Tests
         [Fact]
         public void test_call_sqlite3_enable_load_extension()
         {
+            if (0 == raw.sqlite3_compileoption_used("SQLITE_OMIT_LOAD_EXTENSION"))
+            {
+                using (sqlite3 db = ugly.open(":memory:"))
+                {
+                    var rc = raw.sqlite3_enable_load_extension(db, 0);
+                    Assert.Equal(raw.SQLITE_OK, rc);
+                }
+            }
+        }
+
+        [Fact]
+        public void test_call_sqlite3_limit()
+        {
             using (sqlite3 db = ugly.open(":memory:"))
             {
-                var rc = raw.sqlite3_enable_load_extension(db, 0);
-                Assert.Equal(raw.SQLITE_OK, rc);
+                var query = raw.sqlite3_limit(db, raw.SQLITE_LIMIT_LENGTH, -1);
+                Assert.True(query >= 0);
+
+                const int limit = 10240;
+                var current = raw.sqlite3_limit(db, raw.SQLITE_LIMIT_LENGTH, limit);
+                Assert.Equal(query, current);
+
+                query = raw.sqlite3_limit(db, raw.SQLITE_LIMIT_LENGTH, -1);
+                Assert.Equal(limit, query);
             }
         }
 
@@ -659,6 +680,10 @@ namespace SQLitePCL.Tests
         [Fact]
         public void test_keywords()
         {
+            var version = raw.sqlite3_libversion_number();
+
+            if (version < 3024000) return; // Added in 3.24.0: https://sqlite.org/releaselog/3_24_0.html
+
             var n = SQLitePCL.raw.sqlite3_keyword_count();
             Assert.True(n > 0);
             for (var i=0; i<n; i++)
@@ -760,10 +785,17 @@ namespace SQLitePCL.Tests
         public void test_enable_shared_cache()
         {
             int result = raw.sqlite3_enable_shared_cache(1);
-            Assert.Equal(raw.SQLITE_OK, result);
+            // https://www.sqlite.org/c3ref/enable_shared_cache.html
+            // Note: This method is disabled on MacOS X 10.7 and iOS version 5.0 and will always
+            // return SQLITE_MISUSE. On those systems, shared cache mode should be enabled
+            // per-database connection via sqlite3_open_v2() with SQLITE_OPEN_SHAREDCACHE.
+            if (result != raw.SQLITE_MISUSE)
+            {
+                Assert.Equal(raw.SQLITE_OK, result);
 
-            result = raw.sqlite3_enable_shared_cache(0);
-            Assert.Equal(raw.SQLITE_OK, result);
+                result = raw.sqlite3_enable_shared_cache(0);
+                Assert.Equal(raw.SQLITE_OK, result);
+            }
         }
 
         [Fact]
@@ -771,22 +803,75 @@ namespace SQLitePCL.Tests
         {
             long memory_used = raw.sqlite3_memory_used();
             long memory_highwater = raw.sqlite3_memory_highwater(0);
-#if not
+        #if not
             // these asserts fail on the iOS builtin sqlite.  not sure
             // why.  not sure the asserts are worth doing anyway.
             Assert.True(memory_used > 0);
             Assert.True(memory_highwater >= memory_used);
-#endif
+        #endif
+        }
+
+        [Fact]
+        public void test_sqlite3_soft_heap_limit64()
+        {
+            // Skip failing test on windows system provided winsqlite3
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && raw.GetNativeLibraryName() == "winsqlite3")
+                return;
+
+            var query = raw.sqlite3_soft_heap_limit64(-1);
+            Assert.True(query >= 0);
+
+            var limit = query + 10L * 1024 * 1024;
+            var current = raw.sqlite3_soft_heap_limit64(limit);
+            Assert.Equal(query, current);
+
+            query = raw.sqlite3_soft_heap_limit64(-1);
+            Assert.Equal(limit, query);
+
+            raw.sqlite3_soft_heap_limit64(0);
+            var gone = raw.sqlite3_soft_heap_limit64(-1);
+            Assert.Equal(0, gone);
+        }
+
+        [Fact]
+        public void test_sqlite3_hard_heap_limit64()
+        {
+            var version = raw.sqlite3_libversion_number();
+            if (version < 3031001) return; // Added in 3.31.1: https://sqlite.org/releaselog/3_31_1.html
+
+            // Skip failing test on macOS system provided libsqlite3.dylib
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && raw.GetNativeLibraryName() == "sqlite3")
+                return;
+
+            var query = raw.sqlite3_hard_heap_limit64(-1);
+            Assert.True(query >= 0);
+
+            var limit = query + 10L * 1024 * 1024;
+            var current = raw.sqlite3_hard_heap_limit64(limit);
+            Assert.Equal(query, current);
+
+            query = raw.sqlite3_hard_heap_limit64(-1);
+            Assert.Equal(limit, query);
+
+            raw.sqlite3_hard_heap_limit64(0);
+            var gone = raw.sqlite3_hard_heap_limit64(-1);
+            Assert.Equal(0, gone);
         }
 
         [Fact]
         public void test_sqlite3_status()
         {
+            // Skip failing test on macOS system provided libsqlite3.dylib
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && raw.GetNativeLibraryName() == "sqlite3")
+                return;
+
             using (sqlite3 db = ugly.open(":memory:"))
             {
                 int current;
                 int highwater;
-                ugly.sqlite3_status(raw.SQLITE_STATUS_MEMORY_USED, out current, out highwater, 0);
+
+                var rc = raw.sqlite3_status(raw.SQLITE_STATUS_MEMORY_USED, out current, out highwater, 0);
+                Assert.Equal(raw.SQLITE_OK, rc);
 
                 Assert.True(current > 0);
                 Assert.True(highwater > 0);
@@ -1346,7 +1431,7 @@ namespace SQLitePCL.Tests
         [Fact]
         public void test_create_table_explicit_close_v2()
         {
-#if not
+        #if not
             // maybe we should just let this fail so we can
             // see the differences between running against the built-in
             // sqlite vs a recent version?
@@ -1354,7 +1439,7 @@ namespace SQLitePCL.Tests
             {
                 return;
             }
-#endif
+        #endif
             sqlite3 db = ugly.open(":memory:");
             db.exec("CREATE TABLE foo (x int);");
             db.close_v2();
@@ -1475,6 +1560,10 @@ namespace SQLitePCL.Tests
         [Fact]
         public void test_stmt_isexplain()
         {
+            var version = raw.sqlite3_libversion_number();
+
+            if (version < 3028000) return; // Added in 3.28.0: https://sqlite.org/releaselog/3_28_0.html
+
             using (sqlite3 db = ugly.open(":memory:"))
             {
                 db.exec("CREATE TABLE foo (x int);");
@@ -1486,7 +1575,7 @@ namespace SQLitePCL.Tests
 
                     Assert.Equal(0, stmt.stmt_isexplain());
                 }
-                
+
                 sql = "EXPLAIN SELECT x FROM foo";
                 using (sqlite3_stmt stmt = db.prepare(sql))
                 {
@@ -1494,7 +1583,7 @@ namespace SQLitePCL.Tests
 
                     Assert.Equal(1, stmt.stmt_isexplain());
                 }
-                
+
                 sql = "EXPLAIN QUERY PLAN SELECT x FROM foo";
                 using (sqlite3_stmt stmt = db.prepare(sql))
                 {
@@ -1581,6 +1670,31 @@ namespace SQLitePCL.Tests
         }
 
         [Fact]
+        public void test_bind_text_empty()
+        {
+            // see issue #557 and PR #558
+            using (sqlite3 db = ugly.open(":memory:"))
+            {
+                db.exec("CREATE TABLE foo (x text);");
+                const string s = "";
+                var ba = new byte[Encoding.UTF8.GetByteCount(s)];
+                Encoding.UTF8.GetBytes(s, 0, s.Length, ba, 0);
+                var sp = ba.AsSpan();
+                using (sqlite3_stmt stmt = db.prepare("INSERT INTO foo (x) VALUES (?)"))
+                {
+                    stmt.bind_text(1, sp);
+                    stmt.step();
+                }
+                using (sqlite3_stmt stmt = db.prepare("SELECT x FROM foo"))
+                {
+                    stmt.step_row();
+                    var s2 = stmt.column_text(0);
+                    Assert.Equal("", s2);
+                }
+            }
+        }
+
+        [Fact]
         public void test_bind_text16()
         {
             using (sqlite3 db = ugly.open(":memory:"))
@@ -1645,12 +1759,12 @@ namespace SQLitePCL.Tests
                 db.exec("CREATE TABLE foo (x int, v int, t text, d real, b blob, q blob);");
                 byte[] blob = db.query_scalar<byte[]>("SELECT randomblob(5);");
                 db.exec("INSERT INTO foo (x,v,t,d,b,q) VALUES (?,?,?,?,?,?)", 32, 44, "hello", 3.14, blob, null);
-#if not
+        #if not
                 // maybe we should just let this fail so we can
                 // see the differences between running against the built-in
                 // sqlite vs a recent version?
                 if (1 == raw.sqlite3_compileoption_used("ENABLE_COLUMN_METADATA"))
-#endif
+        #endif
                 {
                     using (sqlite3_stmt stmt = db.prepare("SELECT x AS mario FROM foo;"))
                     {
@@ -1662,7 +1776,7 @@ namespace SQLitePCL.Tests
                         Assert.Equal("foo", stmt.column_table_name(0));
                         Assert.Equal("x", stmt.column_origin_name(0));
                         Assert.Equal("mario", stmt.column_name(0));
-                        Assert.Equal("int", stmt.column_decltype(0));
+                        Assert.Equal("int", stmt.column_decltype(0).ToLower());
                     }
                 }
             }
@@ -1696,7 +1810,7 @@ namespace SQLitePCL.Tests
                 Assert.Equal(2, logSize);
                 Assert.Equal(2, framesCheckPointed);
 
-                // Set autocheckpoint to 1 so that regardless of the number of 
+                // Set autocheckpoint to 1 so that regardless of the number of
                 // commits, explicit checkpoints only checkpoint the last update.
                 db.wal_autocheckpoint(1);
 
@@ -1972,14 +2086,14 @@ namespace SQLitePCL.Tests
                 int autoInc;
 
                 raw.sqlite3_table_column_metadata(db, "main", "foo", "x", out dataType, out collSeq, out notNull, out primaryKey, out autoInc);
-                Assert.Equal("int", dataType);
+                Assert.Equal("int", dataType.ToLower());
                 Assert.Equal("BINARY", collSeq);
                 Assert.True(notNull > 0);
                 Assert.Equal(0, primaryKey);
                 Assert.Equal(0, autoInc);
 
                 raw.sqlite3_table_column_metadata(db, "main", "foo", "rowid", out dataType, out collSeq, out notNull, out primaryKey, out autoInc);
-                Assert.Equal("integer", dataType);
+                Assert.Equal("integer", dataType.ToLower());
                 Assert.Equal("BINARY", collSeq);
                 Assert.Equal(0, notNull);
                 Assert.True(primaryKey > 0);
@@ -2759,7 +2873,7 @@ namespace SQLitePCL.Tests
     [Order(0)]
     public class class_test_sqlite3_config
     {
-        // this test class is special.  
+        // this test class is special.
         // it needs to run first, before anything else.
         // it is marked with attributes so that fake_xunit
         // will find it and run it, but real xunit will ignore it.
@@ -2768,6 +2882,10 @@ namespace SQLitePCL.Tests
         [Order(0)]
         public void test_log()
         {
+            // Skip failing test on macOS system provided libsqlite3.dylib
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX) && raw.GetNativeLibraryName() == "sqlite3")
+                return;
+
             var msgs = new List<string>();
             var rc = raw.sqlite3_config_log(
                 (v, errcode, msg) => msgs.Add(msg),
@@ -2777,10 +2895,29 @@ namespace SQLitePCL.Tests
 
             GC.Collect();
 
-            const string VAL = "hello!";
-            raw.sqlite3_log(0, VAL);
+            const string VAL0 = "hello!";
+            raw.sqlite3_log(0, VAL0);
             Assert.Single(msgs);
-            Assert.Equal(VAL, msgs[0]);
+            Assert.Equal(VAL0, msgs[0]);
+
+            const string VAL1 = "world!";
+            raw.sqlite3_log(0, VAL1);
+            Assert.Equal(2, msgs.Count);
+            Assert.Equal(VAL0, msgs[0]);
+            Assert.Equal(VAL1, msgs[1]);
+
+            const int MORE = 17;
+            for (var i = 0; i < MORE; i++)
+            {
+                Assert.Equal(2 + i, msgs.Count);
+                raw.sqlite3_log(0, $"{i}");
+                Assert.Equal(2 + i + 1, msgs.Count);
+            }
+
+            for (var i = 0; i < MORE; i++)
+            {
+                Assert.Equal($"{i}", msgs[i + 2]);
+            }
 
             strdelegate_log no_cb = null;
             rc = raw.sqlite3_config_log(no_cb, null);
@@ -2837,6 +2974,45 @@ namespace SQLitePCL.Tests
         }
 
 
+    }
+
+    [Collection("Init")]
+    public class class_test_sqlite3_db_config
+    {
+        [Fact]
+        public void test_call_sqlite3_db_config_3()
+        {
+            using (sqlite3 db = ugly.open(":memory:"))
+            {
+                var rc = raw.sqlite3_db_config(db, raw.SQLITE_DBCONFIG_MAINDBNAME, utf8z.FromString("new_main"));
+
+                Assert.Equal(raw.SQLITE_OK, rc);
+            }
+        }
+
+        [Fact]
+        public void test_call_sqlite3_db_config_4()
+        {
+            using (sqlite3 db = ugly.open(":memory:"))
+            {
+                int disabled = 0;
+                var rc = raw.sqlite3_db_config(db, raw.SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE, 1, out disabled);
+
+                Assert.Equal(1, disabled);
+                Assert.Equal(raw.SQLITE_OK, rc);
+            }
+        }
+
+        [Fact]
+        public void test_call_sqlite3_db_config_5()
+        {
+            using (sqlite3 db = ugly.open(":memory:"))
+            {
+                var rc = raw.sqlite3_db_config(db, raw.SQLITE_DBCONFIG_LOOKASIDE, IntPtr.Zero, 256, 16);
+
+                Assert.Equal(raw.SQLITE_OK, rc);
+            }
+        }
     }
 
     [Collection("Init")]
@@ -3163,12 +3339,24 @@ namespace SQLitePCL.Tests
             }
         }
 
+        private static bool is_sqlite3mc()
+        {
+            using (sqlite3 db = ugly.open(":memory:"))
+            {
+                var s = db.query_scalar<string>("PRAGMA cipher");
+                return !string.IsNullOrEmpty(s);
+            }
+        }
+
         [Fact]
         public void test_encrypted_file_with_pragma()
         {
-            if (is_sqlcipher())
+            if (is_sqlcipher() || is_sqlite3mc())
             {
-                Assert.Contains("sqlcipher", raw.GetNativeLibraryName());
+                if (is_sqlcipher())
+                    Assert.Contains("sqlcipher", raw.GetNativeLibraryName());
+                else
+                    Assert.Contains("sqlite3mc", raw.GetNativeLibraryName());
                 string name;
                 using (sqlite3 db = ugly.open(":memory:"))
                 {
@@ -3217,15 +3405,19 @@ namespace SQLitePCL.Tests
             else
             {
                 Assert.DoesNotContain("sqlcipher", raw.GetNativeLibraryName());
+                Assert.DoesNotContain("sqlite3mc", raw.GetNativeLibraryName());
             }
         }
 
         [Fact]
         public void test_encrypted_file_with_key()
         {
-            if (is_sqlcipher())
+            if (is_sqlcipher() || is_sqlite3mc())
             {
-                Assert.Contains("sqlcipher", raw.GetNativeLibraryName());
+                if (is_sqlcipher())
+                    Assert.Contains("sqlcipher", raw.GetNativeLibraryName());
+                else
+                    Assert.Contains("sqlite3mc", raw.GetNativeLibraryName());
                 string name;
                 using (sqlite3 db = ugly.open(":memory:"))
                 {
@@ -3284,9 +3476,464 @@ namespace SQLitePCL.Tests
             else
             {
                 Assert.DoesNotContain("sqlcipher", raw.GetNativeLibraryName());
+                Assert.DoesNotContain("sqlite3mc", raw.GetNativeLibraryName());
             }
         }
 
+#if TODO
+        [Fact]
+        public void test_database_is_SQLCipher4()
+        {
+            if (is_sqlite3mc())
+            {
+                Assert.Contains("sqlite3mc", raw.GetNativeLibraryName());
+                // Test to access database encrypted with SQLCipher version 4
+                // Result: 78536 1 1 one one 1 2 one two
+                using (sqlite3 db = ugly.open("file:sqlcipher-4.0-testkey.db?cipher=sqlcipher&legacy=4"))
+                {
+                    const string pswd = "testkey";
+                    var key = u.to_utf8(pswd);
+                    db.key(key);
+                    var value = db.query_scalar<int>("select count(*) from t1");
+                    Assert.Equal(78536, value);
+                }
+            }
+            else
+            {
+                Assert.DoesNotContain("sqlite3mc", raw.GetNativeLibraryName());
+            }
+        }
+
+        [Fact]
+        public void test_database_is_custom_SQLCipher2()
+        {
+            if (is_sqlite3mc())
+            {
+                Assert.Contains("sqlite3mc", raw.GetNativeLibraryName());
+                // Test to access database encrypted with SQLCipher version 2
+                // using 4000 iterations for the HMAC key derivation and a HMAC salt mask of zero
+                // Result: 38768 test-0-0 test-0-1 test-1-0 test-1-1
+                using (sqlite3 db = ugly.open("file:sqlcipher-2.0-beta-testkey.db?cipher=sqlcipher&legacy=2&fast_kdf_iter=4000&hmac_salt_mask=0"))
+                {
+                    const string pswd = "testkey";
+                    var key = u.to_utf8(pswd);
+                    db.key(key);
+                    var value = db.query_scalar<int>("select count(*) from t1");
+                    Assert.Equal(38768, value);
+                }
+            }
+            else
+            {
+                Assert.DoesNotContain("sqlite3mc", raw.GetNativeLibraryName());
+            }
+        }
+#endif
+    }
+
+    [Collection("Init")]
+    public class class_test_serialize_deserialize
+    {
+        [Fact]
+        public void test_serialize_should_return_size()
+        {
+            // Skip failing test on windows system provided winsqlite3
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && raw.GetNativeLibraryName() == "winsqlite3")
+                return;
+
+            using (sqlite3 db = ugly.open(":memory:"))
+            {
+                db.exec("CREATE TABLE foo (x text);");
+                db.exec("INSERT INTO foo (x) VALUES ('b')");
+                db.exec("INSERT INTO foo (x) VALUES ('c')");
+                db.exec("INSERT INTO foo (x) VALUES ('d')");
+                db.exec("INSERT INTO foo (x) VALUES ('e')");
+                db.exec("INSERT INTO foo (x) VALUES ('f')");
+
+                IntPtr serialized = raw.sqlite3_serialize(db, "main", out long size, 0);
+                
+                Assert.True(serialized != IntPtr.Zero);
+                Assert.True(size > 0);
+
+                raw.sqlite3_free(serialized);
+            }
+        }
+
+        [Fact]
+        public void test_serialize_nocopy_should_return_size()
+        {
+            // Skip failing test on windows system provided winsqlite3
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && raw.GetNativeLibraryName() == "winsqlite3")
+                return;
+
+            using (sqlite3 db = ugly.open(":memory:"))
+            {
+                db.exec("CREATE TABLE foo (x text);");
+                db.exec("INSERT INTO foo (x) VALUES ('b')");
+                db.exec("INSERT INTO foo (x) VALUES ('c')");
+                db.exec("INSERT INTO foo (x) VALUES ('d')");
+                db.exec("INSERT INTO foo (x) VALUES ('e')");
+                db.exec("INSERT INTO foo (x) VALUES ('f')");
+
+                IntPtr serialized = raw.sqlite3_serialize(db, "main", out long size, raw.SQLITE_SERIALIZE_NOCOPY);
+
+                // Don't assert serialized != null; contiguous copy of the db is not guaranteed to exist in memory when NOCOPY is used.
+                
+                Assert.True(size > 0);
+            }
+        }
+
+        [Fact]
+        public void test_serialize_deserialize_same_db_instance_should_roundtrip()
+        {
+            // Skip failing test on windows system provided winsqlite3
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && raw.GetNativeLibraryName() == "winsqlite3")
+                return;
+
+            using (sqlite3 db = ugly.open(":memory:"))
+            {
+                db.exec("CREATE TABLE foo (x text);");
+                db.exec("INSERT INTO foo (x) VALUES ('b')");
+                db.exec("INSERT INTO foo (x) VALUES ('c')");
+                db.exec("INSERT INTO foo (x) VALUES ('d')");
+                db.exec("INSERT INTO foo (x) VALUES ('e')");
+                db.exec("INSERT INTO foo (x) VALUES ('f')");
+
+                IntPtr serialized = raw.sqlite3_serialize(db, "main", out long size, 0);
+
+                int deserializeResult = raw.sqlite3_deserialize(db, "main", serialized, size, size, raw.SQLITE_DESERIALIZE_FREEONCLOSE);
+
+                Assert.Equal(raw.SQLITE_OK, deserializeResult);
+
+                int count = db.query_scalar<int>("SELECT COUNT(*) FROM foo;");
+
+                Assert.Equal(5, count);
+            }
+        }
+
+        [Fact]
+        public void test_serialize_deserialize_different_db_instances_allochglobal_should_roundtrip()
+        {
+            // Skip failing test on windows system provided winsqlite3
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && raw.GetNativeLibraryName() == "winsqlite3")
+                return;
+
+            byte[] serializedBuffer;
+
+            using (sqlite3 db1 = ugly.open(":memory:"))
+            {
+                db1.exec("CREATE TABLE foo (x text);");
+                db1.exec("INSERT INTO foo (x) VALUES ('b')");
+                db1.exec("INSERT INTO foo (x) VALUES ('c')");
+                db1.exec("INSERT INTO foo (x) VALUES ('d')");
+                db1.exec("INSERT INTO foo (x) VALUES ('e')");
+                db1.exec("INSERT INTO foo (x) VALUES ('f')");
+
+                IntPtr serializedPtr1 = raw.sqlite3_serialize(db1, "main", out long size, 0);
+
+                serializedBuffer = new byte[size];
+                System.Runtime.InteropServices.Marshal.Copy(serializedPtr1, serializedBuffer, 0, (int)size);
+
+                raw.sqlite3_free(serializedPtr1);
+            }
+
+            {
+                IntPtr serializedPtr2 = System.Runtime.InteropServices.Marshal.AllocHGlobal(serializedBuffer.Length);
+                System.Runtime.InteropServices.Marshal.Copy(serializedBuffer, 0, serializedPtr2, serializedBuffer.Length);
+
+                using (sqlite3 db2 = ugly.open(":memory:"))
+                {
+                    int deserializeResult = raw.sqlite3_deserialize(db2, "main", serializedPtr2, serializedBuffer.Length, serializedBuffer.Length, 0);
+
+                    Assert.Equal(raw.SQLITE_OK, deserializeResult);
+
+                    int count = db2.query_scalar<int>("SELECT COUNT(*) FROM foo;");
+
+                    Assert.Equal(5, count);
+                }
+
+                System.Runtime.InteropServices.Marshal.FreeHGlobal(serializedPtr2);
+            }
+        }
+
+        [Fact]
+        public void test_serialize_deserialize_different_db_instances_shared_intptr_should_roundtrip()
+        {
+            // Skip failing test on windows system provided winsqlite3
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && raw.GetNativeLibraryName() == "winsqlite3")
+                return;
+
+            IntPtr serializedPtr;
+            long size;
+
+            using (sqlite3 db1 = ugly.open(":memory:"))
+            {
+                db1.exec("CREATE TABLE foo (x text);");
+                db1.exec("INSERT INTO foo (x) VALUES ('b')");
+                db1.exec("INSERT INTO foo (x) VALUES ('c')");
+                db1.exec("INSERT INTO foo (x) VALUES ('d')");
+                db1.exec("INSERT INTO foo (x) VALUES ('e')");
+                db1.exec("INSERT INTO foo (x) VALUES ('f')");
+
+                serializedPtr = raw.sqlite3_serialize(db1, "main", out size, 0);
+            }
+
+            using (sqlite3 db2 = ugly.open(":memory:"))
+            {
+                int deserializeResult = raw.sqlite3_deserialize(db2, "main", serializedPtr, size, size, 0);
+
+                Assert.Equal(raw.SQLITE_OK, deserializeResult);
+
+                int count = db2.query_scalar<int>("SELECT COUNT(*) FROM foo;");
+
+                Assert.Equal(5, count);
+            }
+
+            raw.sqlite3_free(serializedPtr);
+        }
+
+        [Fact]
+        public void test_serialize_deserialize_different_db_instances_sqlite3malloc64_should_roundtrip()
+        {
+            // Skip failing test on windows system provided winsqlite3
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && raw.GetNativeLibraryName() == "winsqlite3")
+                return;
+
+            IntPtr serializedPtr;
+            long size;
+
+            using (sqlite3 db1 = ugly.open(":memory:"))
+            {
+                db1.exec("CREATE TABLE foo (x text);");
+                db1.exec("INSERT INTO foo (x) VALUES ('b')");
+                db1.exec("INSERT INTO foo (x) VALUES ('c')");
+                db1.exec("INSERT INTO foo (x) VALUES ('d')");
+                db1.exec("INSERT INTO foo (x) VALUES ('e')");
+                db1.exec("INSERT INTO foo (x) VALUES ('f')");
+
+                IntPtr serializeResultPtr = raw.sqlite3_serialize(db1, "main", out size, 0);
+
+                serializedPtr = raw.sqlite3_malloc64(size);
+
+                unsafe
+                {
+                    var source = new Span<byte>(serializeResultPtr.ToPointer(), (int)size);
+                    var dest = new Span<byte>(serializedPtr.ToPointer(), (int)size);
+                    source.CopyTo(dest);
+                }
+
+                raw.sqlite3_free(serializeResultPtr);
+            }
+
+            using (sqlite3 db2 = ugly.open(":memory:"))
+            {
+                int deserializeResult = raw.sqlite3_deserialize(db2, "main", serializedPtr, size, size, 0);
+
+                Assert.Equal(raw.SQLITE_OK, deserializeResult);
+
+                int count = db2.query_scalar<int>("SELECT COUNT(*) FROM foo;");
+
+                Assert.Equal(5, count);
+            }
+
+            raw.sqlite3_free(serializedPtr);
+        }
+
+        [Fact]
+        public void test_serialize_deserialize_different_db_instances_sqlite3malloc_should_roundtrip()
+        {
+            // Skip failing test on windows system provided winsqlite3
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && raw.GetNativeLibraryName() == "winsqlite3")
+                return;
+
+            IntPtr serializedPtr;
+            long size;
+
+            using (sqlite3 db1 = ugly.open(":memory:"))
+            {
+                db1.exec("CREATE TABLE foo (x text);");
+                db1.exec("INSERT INTO foo (x) VALUES ('b')");
+                db1.exec("INSERT INTO foo (x) VALUES ('c')");
+                db1.exec("INSERT INTO foo (x) VALUES ('d')");
+                db1.exec("INSERT INTO foo (x) VALUES ('e')");
+                db1.exec("INSERT INTO foo (x) VALUES ('f')");
+
+                IntPtr serializeResultPtr = raw.sqlite3_serialize(db1, "main", out size, 0);
+
+                serializedPtr = raw.sqlite3_malloc((int)size);
+
+                unsafe
+                {
+                    var source = new Span<byte>(serializeResultPtr.ToPointer(), (int)size);
+                    var dest = new Span<byte>(serializedPtr.ToPointer(), (int)size);
+                    source.CopyTo(dest);
+                }
+
+                raw.sqlite3_free(serializeResultPtr);
+            }
+
+            using (sqlite3 db2 = ugly.open(":memory:"))
+            {
+                int deserializeResult = raw.sqlite3_deserialize(db2, "main", serializedPtr, size, size, 0);
+
+                Assert.Equal(raw.SQLITE_OK, deserializeResult);
+
+                int count = db2.query_scalar<int>("SELECT COUNT(*) FROM foo;");
+
+                Assert.Equal(5, count);
+            }
+
+            raw.sqlite3_free(serializedPtr);
+        }
+
+        [Fact]
+        public void test_serialize_deserialize_resizable_should_allow_adding_rows()
+        {
+            // Skip failing test on windows system provided winsqlite3
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && raw.GetNativeLibraryName() == "winsqlite3")
+                return;
+
+            IntPtr serializedPtr;
+            long size;
+
+            using (sqlite3 db1 = ugly.open(":memory:"))
+            {
+                db1.exec("CREATE TABLE foo (x text);");
+                db1.exec("INSERT INTO foo (x) VALUES ('b')");
+                db1.exec("INSERT INTO foo (x) VALUES ('c')");
+                db1.exec("INSERT INTO foo (x) VALUES ('d')");
+                db1.exec("INSERT INTO foo (x) VALUES ('e')");
+                db1.exec("INSERT INTO foo (x) VALUES ('f')");
+
+                serializedPtr = raw.sqlite3_serialize(db1, "main", out size, 0);
+            }
+
+            using (sqlite3 db2 = ugly.open(":memory:"))
+            {
+                int deserializeResult = raw.sqlite3_deserialize(db2, "main", serializedPtr, size, size, raw.SQLITE_DESERIALIZE_RESIZEABLE);
+
+                Assert.Equal(raw.SQLITE_OK, deserializeResult);
+
+                var stmt = db2.prepare(
+                    "INSERT INTO foo (x) VALUES ('"
+                    // 3437 characters
+                    + "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. "
+                    + "Risus feugiat in ante metus dictum. Congue quisque egestas diam in. Dui sapien eget mi proin sed libero enim sed faucibus. "
+                    + "Dignissim cras tincidunt lobortis feugiat vivamus at augue eget arcu. Leo in vitae turpis massa sed elementum tempus egestas. "
+                    + "Amet tellus cras adipiscing enim. Ut venenatis tellus in metus vulputate. Dolor sit amet consectetur adipiscing elit pellentesque "
+                    + "habitant morbi tristique. Est placerat in egestas erat. Luctus accumsan tortor posuere ac ut consequat semper. Arcu non odio "
+                    + "euismod lacinia at quis risus. Tortor id aliquet lectus proin. Tempus iaculis urna id volutpat lacus. Elementum curabitur vitae "
+                    + "nunc sed velit dignissim sodales ut eu. Nascetur ridiculus mus mauris vitae. Natoque penatibus et magnis dis. Posuere sollicitudin "
+                    + "aliquam ultrices sagittis orci a. Aenean et tortor at risus viverra adipiscing. Rhoncus est pellentesque elit ullamcorper "
+                    + "dignissim. Consectetur a erat nam at lectus urna. Vulputate mi sit amet mauris commodo quis imperdiet massa tincidunt. Eleifend "
+                    + "quam adipiscing vitae proin sagittis nisl rhoncus mattis rhoncus. Commodo quis imperdiet massa tincidunt nunc pulvinar sapien "
+                    + "et ligula. A diam maecenas sed enim. Tristique magna sit amet purus. Volutpat ac tincidunt vitae semper quis lectus nulla at "
+                    + "volutpat. Ut sem nulla pharetra diam sit. Scelerisque mauris pellentesque pulvinar pellentesque habitant morbi tristique. Tortor "
+                    + "at risus viverra adipiscing at in. Faucibus pulvinar elementum integer enim neque volutpat ac tincidunt vitae. Iaculis at erat "
+                    + "pellentesque adipiscing commodo elit. Purus gravida quis blandit turpis cursus in hac habitasse. Amet consectetur adipiscing "
+                    + "elit duis tristique sollicitudin. Faucibus pulvinar elementum integer enim neque volutpat ac. Lectus proin nibh nisl condimentum "
+                    + "id venenatis a condimentum vitae. Enim eu turpis egestas pretium aenean pharetra. Nibh venenatis cras sed felis eget velit "
+                    + "aliquet sagittis. Est velit egestas dui id ornare arcu odio ut. Odio ut enim blandit volutpat maecenas volutpat blandit aliquam "
+                    + "etiam. Nam aliquam sem et tortor consequat id. Nunc faucibus a pellentesque sit. Cursus euismod quis viverra nibh. Neque viverra "
+                    + "justo nec ultrices dui sapien eget mi proin. Aenean pharetra magna ac placerat vestibulum lectus mauris. Ut consequat semper "
+                    + "viverra nam. Ac orci phasellus egestas tellus rutrum. Dignissim diam quis enim lobortis scelerisque fermentum dui faucibus in. "
+                    + "Leo in vitae turpis massa. Faucibus ornare suspendisse sed nisi lacus sed. Quam nulla porttitor massa id. Cursus turpis massa "
+                    + "tincidunt dui ut ornare lectus sit amet. Scelerisque eleifend donec pretium vulputate sapien. Turpis in eu mi bibendum neque. "
+                    + "Nunc eget lorem dolor sed viverra ipsum. Vel quam elementum pulvinar etiam non quam lacus. Mauris in aliquam sem fringilla ut "
+                    + "morbi tincidunt augue. Auctor eu augue ut lectus. Eget duis at tellus at urna condimentum. Tincidunt arcu non sodales neque "
+                    + "sodales ut etiam sit amet. Nec feugiat nisl pretium fusce id velit ut tortor pretium. Nibh cras pulvinar mattis nunc sed. Sit "
+                    + "amet venenatis urna cursus eget. Molestie ac feugiat sed lectus. Pharetra massa massa ultricies mi quis hendrerit dolor magna "
+                    + "eget. Tempor nec feugiat nisl pretium fusce id velit. Posuere sollicitudin aliquam ultrices sagittis."
+                    + "')");
+
+                int stepResult = raw.sqlite3_step(stmt);
+
+                Assert.Equal(raw.SQLITE_DONE, stepResult);
+
+                int count = db2.query_scalar<int>("SELECT COUNT(*) FROM foo;");
+
+                Assert.Equal(6, count);
+            }
+
+            raw.sqlite3_free(serializedPtr);
+        }
+
+        [Fact]
+        public void test_serialize_deserialize_extra_maxDataSize_should_allow_adding_rows()
+        {
+            // Skip failing test on windows system provided winsqlite3
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && raw.GetNativeLibraryName() == "winsqlite3")
+                return;
+
+            byte[] serializedBuffer;
+
+            using (sqlite3 db1 = ugly.open(":memory:"))
+            {
+                db1.exec("CREATE TABLE foo (x text);");
+                db1.exec("INSERT INTO foo (x) VALUES ('b')");
+                db1.exec("INSERT INTO foo (x) VALUES ('c')");
+                db1.exec("INSERT INTO foo (x) VALUES ('d')");
+                db1.exec("INSERT INTO foo (x) VALUES ('e')");
+                db1.exec("INSERT INTO foo (x) VALUES ('f')");
+
+                IntPtr serializedPtr1 = raw.sqlite3_serialize(db1, "main", out long size, 0);
+
+                serializedBuffer = new byte[size];
+                System.Runtime.InteropServices.Marshal.Copy(serializedPtr1, serializedBuffer, 0, (int)size);
+
+                raw.sqlite3_free(serializedPtr1);
+            }
+
+            {
+                int maxDataSize = serializedBuffer.Length + 4096; // Additional 4k of memory at end of buffer should be sufficient
+
+                IntPtr serializedPtr2 = System.Runtime.InteropServices.Marshal.AllocHGlobal(maxDataSize);
+                System.Runtime.InteropServices.Marshal.Copy(serializedBuffer, 0, serializedPtr2, serializedBuffer.Length);
+
+                using (sqlite3 db2 = ugly.open(":memory:"))
+                {
+                    int deserializeResult = raw.sqlite3_deserialize(db2, "main", serializedPtr2, serializedBuffer.Length, maxDataSize, 0);
+
+                    Assert.Equal(raw.SQLITE_OK, deserializeResult);
+
+                    db2.exec("INSERT INTO foo (x) VALUES ('g')");
+
+                    int count = db2.query_scalar<int>("SELECT COUNT(*) FROM foo;");
+
+                    Assert.Equal(6, count);
+                }
+
+                System.Runtime.InteropServices.Marshal.FreeHGlobal(serializedPtr2);
+            }
+        }
+
+        [Fact]
+        public void test_serialize_deserialize_readonly_updating_row_should_fail()
+        {
+            // Skip failing test on windows system provided winsqlite3
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && raw.GetNativeLibraryName() == "winsqlite3")
+                return;
+
+            using (sqlite3 db = ugly.open(":memory:"))
+            {
+                db.exec("CREATE TABLE foo (x text);");
+                db.exec("INSERT INTO foo (x) VALUES ('b')");
+                db.exec("INSERT INTO foo (x) VALUES ('c')");
+                db.exec("INSERT INTO foo (x) VALUES ('d')");
+                db.exec("INSERT INTO foo (x) VALUES ('e')");
+                db.exec("INSERT INTO foo (x) VALUES ('f')");
+
+                IntPtr serialized = raw.sqlite3_serialize(db, "main", out long size, 0);
+
+                int deserializeResult = raw.sqlite3_deserialize(db, "main", serialized, size, size, raw.SQLITE_DESERIALIZE_FREEONCLOSE | raw.SQLITE_DESERIALIZE_READONLY);
+
+                Assert.Equal(raw.SQLITE_OK, deserializeResult);
+
+                var stmt = db.prepare("UPDATE foo SET x = 'z' WHERE x = 'b'");
+                int stepResult = raw.sqlite3_step(stmt);
+
+                Assert.Equal(raw.SQLITE_READONLY, stepResult);
+            }
+        }
     }
 }
 

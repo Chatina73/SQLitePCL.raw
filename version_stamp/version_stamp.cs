@@ -1,5 +1,5 @@
 /*
-   Copyright 2014-2021 SourceGear, LLC
+   Copyright 2014-2022 SourceGear, LLC
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -25,8 +25,8 @@ public static class gen
     public const string ROOT_NAME = "SQLitePCLRaw";
 
     public const int MAJOR_VERSION = 2;
-    public const int MINOR_VERSION = 0;
-    public const int PATCH_VERSION = 5;
+    public const int MINOR_VERSION = 1;
+    public const int PATCH_VERSION = 11;
 
     // a version string with a -pre-timestamp in it
     public static string NUSPEC_VERSION_PRE_TIMESTAMP = string.Format("{0}.{1}.{2}-pre{3}",
@@ -50,8 +50,12 @@ public static class gen
         PATCH_VERSION
         );
 
-    // chg this to be the version string we want, one of the above
-    public static string NUSPEC_VERSION = NUSPEC_VERSION_PRE_TIMESTAMP;
+    // keep one of the following 2:
+    //public static string NUSPEC_VERSION = NUSPEC_VERSION_PRE_TIMESTAMP;
+    public static string NUSPEC_VERSION = NUSPEC_VERSION_RELEASE;
+
+    // or maaaaybe this one, but probably not:
+    //public static string NUSPEC_VERSION = NUSPEC_VERSION_PRE;
 
     public static string ASSEMBLY_VERSION = string.Format("{0}.{1}.{2}.{3}",
         MAJOR_VERSION,
@@ -62,7 +66,7 @@ public static class gen
 
     private const string NUSPEC_RELEASE_NOTES = "TODO url";
 
-    const string COPYRIGHT = "Copyright 2014-2021 SourceGear, LLC";
+    const string COPYRIGHT = "Copyright 2014-2024 SourceGear, LLC";
     const string AUTHORS = "Eric Sink";
     const string SUMMARY = "SQLitePCLRaw is a Portable Class Library (PCL) for low-level (raw) access to SQLite";
     const string PACKAGE_TAGS = "sqlite";
@@ -89,12 +93,11 @@ public static class gen
             f.WriteElementString("AssemblyVersion", ASSEMBLY_VERSION);
             f.WriteElementString("FileVersion", ASSEMBLY_VERSION);
             f.WriteElementString("Description", SUMMARY);
-            f.WriteElementString("ProviderLangVersion", "7.3");
+            f.WriteElementString("ProviderLangVersion", "10.0");
             f.WriteElementString("GenerateAssemblyProductAttribute", "false");
             f.WriteElementString("PackageLicenseExpression", "Apache-2.0");
             f.WriteElementString("PackageRequireLicenseAcceptance", "false");
             f.WriteElementString("PackageTags", PACKAGE_TAGS);
-            f.WriteElementString("PackageReleaseNotes", "https://ericsink.com/SQLitePCLRaw_releases.html");
             f.WriteElementString("RepositoryUrl", "https://github.com/ericsink/SQLitePCL.raw");
             f.WriteElementString("RepositoryType", "git");
             f.WriteElementString("PackageOutputPath", string.Format("$([System.IO.Path]::Combine($(MSBuildThisFileDirectory), '{0}'))", nupkgs_dir_name));
@@ -105,6 +108,15 @@ public static class gen
             f.WriteElementString("depversion_xunit", "2.4.1");
             f.WriteElementString("depversion_xunit_runner_visualstudio", "2.4.1");
             f.WriteElementString("depversion_microsoft_net_test_sdk", "15.0.0");
+            f.WriteElementString("tfm_classic_android", "monoandroid9.0");
+            f.WriteElementString("tfm_classic_ios", "xamarin.ios10");
+            f.WriteElementString("tfm_net6_ios", "net6.0-ios14.2");
+            f.WriteElementString("tfm_net6_tvos", "net6.0-tvos10"); // TODO seems wrong
+            f.WriteElementString("tfm_net6_maccatalyst", "net6.0-ios14.0");
+            f.WriteElementString("tfm_net6_android", "net6.0-android"); // TODO seems wrong
+
+            f.WriteComment("The NoNFloatUsing below is a workaround for xamarin/xamarin-macios/#14434");
+            f.WriteElementString("NoNFloatUsing", "true");
 
             f.WriteEndElement(); // PropertyGroup
             f.WriteEndElement(); // project
